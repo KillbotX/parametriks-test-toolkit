@@ -166,9 +166,7 @@ class ScenarioSimulationService:
             if use_lognormal and loss_ratio > 0:
                 simulated_loss_ratio = random.lognormvariate(mu, sigma)
             else:
-                # Modèle Gaussien classique en cas de repli
-                simulated_loss_ratio = max(0, random.gauss(loss_ratio, loss_ratio * 0.3))
-                
+                 simulated_loss_ratio = max(0, random.gauss(loss_ratio, loss_ratio * 0.3))                
             loss_amount = premium_f * simulated_loss_ratio
             losses.append(loss_amount)
 
@@ -200,7 +198,7 @@ class ModelComparisonService:
     def __init__(self, simulation_service: 'ScenarioSimulationService'):
         self.simulator = simulation_service
     
-    def run_advanced_benchmarks(self, BASE_PREMIUM: float, base_loss_ratio: float, n_assures: int = 200) -> Dict:
+    def run_advanced_benchmarks(self, BASE_PREMIUM: float, base_loss_ratio: float, n_insureds: int = 200) -> Dict:
         """
         Génère un portefeuille d'assurés via Monte Carlo, puis entraîne 3 architectures :
           - Benchmark 1 : GLM Tweedie 
@@ -208,18 +206,20 @@ class ModelComparisonService:
           - Benchmark 3 : XGBoost avec Contraintes Monotones Basé Sur Tweedie
           - Benchmark 4 : XGBoost Quantreg avec un quantile référence à cibler (MAGIC_NUMBER)
         """
-        X_risk_factor = np.random.uniform(1.0, 10.0, size=n_assures)
-        X_avec_intercept = sm.add_constant(X_risk_factor)       
-        Y_pure_premium = np.zeros(n_assures)
-        frequence_reelle = np.zeros(n_assures)  # Nombre de sinistres par assuré
-        
+        X_risk_factor = np.random.uniform(1.0, 10.0, size=n_insureds)
+        X_w_intercept = sm.add_constant(X_risk_factor)       
+        Y_pure_premium = np.zeros(n_insureds)
+        real_freq = np.zeros(n_insureds)  # Nombre de sinistres par assuré
+        # paramètres par défaut - quantile par rapport auquel se fait le quantreg (similaire à celui observé avec 
+        # les données); contraintes monotones pour les entraîneurs xgboost, sert à mieux entraîner cf 
+        # https://xgboost.readthedocs.io/en/latest/tutorials/monotonic.html
         MAGIC_NUMBER = 0.89
+        XGB_MONOTONE_CONSTRAINTS = (1,) 
 
-        print(f"\n[Moteur MC] Génération de la sinistralité pour {n_assures} assurés...")
+        print(f"\n[Moteur MC] Génération de la sinistralité pour {n_insureds} assurés...")
         
-        for i in range(n_assures):
+        for i in range(n_insureds):
             individual_loss_ratio = base_loss_ratio * (X_risk_factor[i] / 5.0)
-            
             mc_result = self.simulator.run_monte_carlo(
                 premium=Decimal(str(BASE_PREMIUM)),
                 loss_ratio=individual_loss_ratio,
@@ -229,62 +229,58 @@ class ModelComparisonService:
             )
             
             Y_pure_premium[i] = mc_result["mean"]           
-            lambda_frequence = 0.2 * (X_risk_factor[i] / 5.0)  # ~0.2 sinistre par an en moyenne
-            frequence_reelle[i] = np.random.poisson(lambda_frequence)
-
-        
+            lambda_freq = 0.2 * (X_risk_factor[i] / 5.0)  # ~0.2 sinistre par an en moyenne
+            real_freq[i] = np.random.poisson(lambda_freq)
 
 
         print("--- Benchmark 1 : Ajustement du GLM Tweedie ---")
         model_tweedie = sm.GLM(
             Y_pure_premium, 
-            X_avec_intercept, 
+            X_w_intercept, 
             family=sm.families.Tweedie(link=sm.families.links.Log(), var_power=1.5)
         )
         res_tweedie = model_tweedie.fit()
-        predictions_tweedie = res_tweedie.predict(X_avec_intercept)
+        predictions_tweedie = res_tweedie.predict(X_w_intercept)
+    
 
         print("--- Benchmark 2 : Ajustement du Modèle Fréquence/Sévérité ---")
-        modele_freq = sm.GLM(frequence_reelle, X_avec_intercept, family=sm.families.Poisson(link=sm.families.links.Log()))
-        res_freq = modele_freq.fit()
+        model_freq = sm.GLM(real_freq, X_w_intercept, family=sm.families.Poisson(link=sm.families.links.Log()))
+        res_freq = model_freq.fit()
         
-        indices_sinistres = frequence_reelle > 0
-        Y_sinistres_presents = Y_pure_premium[indices_sinistres]
-        X_sinistres_presents = X_avec_intercept[indices_sinistres]
+        claim_ind = real_freq > 0
+        Y_non_null_claims = Y_pure_premium[claim_ind]
+        X_non_null_claims = X_w_intercept[claim_ind]
         
-        if len(Y_sinistres_presents) > 0:
-            modele_sev = sm.GLM(
-                Y_sinistres_presents, 
-                X_sinistres_presents, 
+        if len(Y_non_null_claims) > 0:
+            model_sev = sm.GLM(
+                Y_non_null_claims, 
+                X_non_null_claims, 
                 family=sm.families.Gamma(link=sm.families.links.Log())
             )
-            res_sev = modele_sev.fit()
-            pred_sev_tous = res_sev.predict(X_avec_intercept)
+            res_sev = model_sev.fit()
+            pred_sev = res_sev.predict(X_w_intercept)
         else:
-            pred_sev_tous = np.full(n_assures, np.mean(Y_pure_premium))
+            pred_sev = np.full(n_insureds, np.mean(Y_pure_premium))
 
-        pred_freq_tous = res_freq.predict(X_avec_intercept)
-        predictions_freq_sev = pred_freq_tous * pred_sev_tous
+        pred_freq_sev = res_freq.predict(X_w_intercept)
+        final_sev_prediction = pred_freq_sev * pred_sev
 
 
         print("--- Benchmark 3 : Entraînement XGBoost Monotone ---")
-        contraintes_monotones = (1,) 
-
         dtrain = xgb.DMatrix(X_risk_factor.reshape(-1, 1), label=Y_pure_premium)
         params_xgb = {
-            'objective': 'reg:tweedie',         # Objectif Tweedie natif pour l'assurance
+            'objective': 'reg:tweedie',         # Objectif XGB-GLMTweedie usuel pour l'assurance
             'tweedie_variance_power': 1.5,
-            'monotone_constraints': contraintes_monotones,
+            'monotone_constraints': XGB_MONOTONE_CONSTRAINTS,
             'learning_rate': 0.1,
             'max_depth': 4,
             'verbosity': 0
         }
 
-        bst_modelle = xgb.train(params_xgb, dtrain, num_boost_round=50)
-        predictions_xgb = bst_modelle.predict(dtrain)
+        best_model = xgb.train(params_xgb, dtrain, num_boost_round=50)
+        predictions_xgb = best_model.predict(dtrain)
 
         print("--- Benchmark 4 : Entraînement QuantReg XGBoost ---")        
-
         dtrain = xgb.DMatrix(X_risk_factor.reshape(-1, 1), label=Y_pure_premium)
 
         params_clone = {
@@ -294,27 +290,29 @@ class ModelComparisonService:
             'learning_rate': 0.1,             
             'verbosity': 0
         }
-        modele_clone = xgb.train(params_clone, dtrain, num_boost_round=100)
-        predictions_clone = modele_clone.predict(dtrain)
-        prime_moyenne_clone = np.mean(predictions_clone)
+        model_clone = xgb.train(params_clone, dtrain, num_boost_round=100)
+        predictions_clone = model_clone.predict(dtrain)
+        avg_clone_premium = np.mean(predictions_clone)
+
+
         sample_comparisons = []
-        for i in range(min(5, n_assures)):
+        for i in range(min(5, n_insureds)):
             sample_comparisons.append({
-                "assure_id": i,
-                "score_risque": round(X_risk_factor[i], 2),
-                "cout_reel_mc": round(Y_pure_premium[i], 2),
-                "prix_tweedie": round(predictions_tweedie[i], 2),
-                "prix_freq_sev": round(predictions_freq_sev[i], 2),
-                "prix_xgboost": round(float(predictions_xgb[i]), 2)
+                "insured_id": i,
+                "risk_score": round(X_risk_factor[i], 2),
+                "real_mc_score": round(Y_pure_premium[i], 2),
+                "tweedie_price": round(predictions_tweedie[i], 2),
+                "freq_sev_price": round(final_sev_prediction[i], 2),
+                "xgboost_price": round(float(predictions_xgb[i]), 2)
             })
 
         return {
             "totals": {
-                "charge_reelle_mc": round(float(np.sum(Y_pure_premium)), 2),
-                "prime_globale_tweedie": round(float(np.sum(predictions_tweedie)), 2),
-                "prime_globale_freq_sev": round(float(np.sum(predictions_freq_sev)), 2),
-                "prime_globale_xgboost": round(float(np.sum(predictions_xgb)), 2),
-                "prime_globale_quantreg": round(float(prime_moyenne_clone), 2)
+                "real_mc_loss": round(float(np.sum(Y_pure_premium)), 2),
+                "global_tweedie_premium": round(float(np.sum(predictions_tweedie)), 2),
+                "global_freq_sev_premium": round(float(np.sum(final_sev_prediction)), 2),
+                "global_xgb_premium": round(float(np.sum(predictions_xgb)), 2),
+                "global_quantreg_premium": round(float(avg_clone_premium), 2)
             },
             "sample_details": sample_comparisons
         }
@@ -322,13 +320,10 @@ class ModelComparisonService:
 
 
 
-# BACKTEST SI STREAMLIT NE FONCTIONNE PAS
+# ----> BACKTEST SI STREAMLIT NE FONCTIONNE PAS
 
 
 if __name__ == "__main__":
-    mc_engine = ScenarioSimulationService()   
-    agent = ParametriksPricingAgent(simulation_service=mc_engine)
-    comparer = ModelComparisonService(simulation_service=mc_engine)
     AI_LOSS_RATIO = 0.65 
     BASE_PREMIUM = 150000.00
     N_INSUREDS = 45 
@@ -339,12 +334,16 @@ if __name__ == "__main__":
     de 50 000 € par événement (Limitation de responsabilité mutuelle).
     """
 
+    mc_engine = ScenarioSimulationService()   
+    agent = ParametriksPricingAgent(simulation_service=mc_engine)
+    comparer = ModelComparisonService(simulation_service=mc_engine)
+
     print(f"\n=== LANCEMENT DE L'ANALYSE COMPAREE (Portefeuille de {N_INSUREDS} assurés) ===")
     
     results = comparer.run_advanced_benchmarks(
         BASE_PREMIUM=BASE_PREMIUM,
         base_loss_ratio=AI_LOSS_RATIO,
-        n_assures=N_INSUREDS
+        n_insureds=N_INSUREDS
     )
 
     poc_output = agent.analyze_contract_and_price(
@@ -357,6 +356,7 @@ if __name__ == "__main__":
     print("\n" + "="*60)
     print("       OUTPUT DU MODÈLE INITIAL (AGENT)   ")
     print("="*60)
+
     analysis = poc_output["analysis"]
     decision = poc_output["actionable_decision"]
     metrics = poc_output["stochastic_metrics"]
@@ -375,29 +375,25 @@ if __name__ == "__main__":
     print(f"  Action Recommandée :  \033[92m{decision['status']}\033[0m")
     print(f"  Prix proposé ajusté:  {decision['proposed_premium']:.2f} €")
     print(f"  Plan d'action      :  {decision['recommendation']}")
-    print("="*60)
-    
+    print("="*60)   
     print("\n" + "="*60)
     print("       COMPARAISON DES PRIMES GLOBALES DU PORTEFEUILLE")
     print("="*60)
-    print(f"Charge Réelle Cumulée (Moteur MC) : {results['totals']['charge_reelle_mc'] / N_INSUREDS} €")
+    print(f"Charge Réelle Cumulée (Moteur MC) : {results['totals']['real_mc_loss'] / N_INSUREDS} €")
     print("-" * 60)
-    print(f"Tarification GLM Tweedie          : {results['totals']['prime_globale_tweedie']/ N_INSUREDS} €")
-    print(f"Tarification Fréquence / Sévérité : {results['totals']['prime_globale_freq_sev']/ N_INSUREDS} €")
-    print(f"Tarification XGBoost Monotone     : {results['totals']['prime_globale_xgboost']/ N_INSUREDS}€")
-    print(f"Tarification XGBoost QuantReg     : {results['totals']['prime_globale_quantreg']}€")
+    print(f"Tarification GLM Tweedie          : {results['totals']['global_tweedie_premium']/ N_INSUREDS} €")
+    print(f"Tarification Fréquence / Sévérité : {results['totals']['global_freq_sev_premium']/ N_INSUREDS} €")
+    print(f"Tarification XGBoost Monotone     : {results['totals']['global_xgb_premium']/ N_INSUREDS}€")
+    print(f"Tarification XGBoost QuantReg     : {results['totals']['global_quantreg_premium']}€")
     print("="*60)
     print("\nDÉTAIL COMPARATIF (ÉCHANTILLON D'ASSURÉS) :")
     print(f"{'ID':<5} | {'Score Risque':<12} | {'Coût MC':<10} | {'Tweedie':<10} | {'Freq/Sev':<10} | {'XGBoost':<10}")
     print("-" * 65)
     for row in results['sample_details']:
-        print(f"#{row['assure_id']:<3} | "
-              f"{row['score_risque']:<12.2f} | "
-              f"{row['cout_reel_mc']:<10.2f} | "
-              f"{row['prix_tweedie']:<10.2f} | "
-              f"{row['prix_freq_sev']:<10.2f} | "
-              f"{row['prix_xgboost']:<10.2f}")
+        print(f"#{row['insured_id']:<3} | "
+              f"{row['risk_score']:<12.2f} | "
+              f"{row['real_mc_score']:<10.2f} | "
+              f"{row['tweedie_price']:<10.2f} | "
+              f"{row['freq_sev_price']:<10.2f} | "
+              f"{row['xgboost_price']:<10.2f}")
     print("-" * 65)
-
-    
-    

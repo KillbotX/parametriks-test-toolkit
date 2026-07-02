@@ -17,10 +17,10 @@ import presets
 
 
 #PARAMÈTRES PAR DÉFAUT
-default_premium = 150000.0
-default_lr = 65
-default_exposure = 45
-textes_exemples = {
+DEFAULT_PREMIUM = 150000.0
+DEFAULT_LR = 65
+DEFAULT_EXPOSURE = 45
+SAMPLE_TEXTS = {
     "Saisie Manuelle": "Contrat standard - Flotte Automobile Corporative.\nCLAUSE DE SECURITE : Responsabilité limitée à un plafond strict de 50 000 €.",
     "Auto": "Contrat de Flotte Automobile - 120 véhicules légers.\nCLAUSE DE SECURITE : Limitation de responsabilité à 50 000 € par accrochage.",
     "Industrie": "Risque Dommage aux Biens & Pertes d'Exploitation Industrielles.",
@@ -30,7 +30,7 @@ textes_exemples = {
 }
 
 
-# Configuration de la page streamlit
+# streamlit config
 st.set_page_config(
     page_title="Parametriks Cockpit Pricing",
     page_icon="🦅",
@@ -42,7 +42,7 @@ st.subheader("Analyse du pricing des modèles de Parametriks et comparaison effe
 st.markdown("---")
 
 st.sidebar.header("Portée de la Simulation")
-mode_simulation = st.sidebar.radio(
+sim_code = st.sidebar.radio(
     "Choisir le niveau d'analyse :",
     options=["Analyse Unitaire (Détail Contrat)", "Multi-Simulations (Stress-Test Portefeuille)"]
 )
@@ -57,26 +57,26 @@ preset_choice = st.sidebar.selectbox(
 
 if preset_choice != "Saisie Manuelle":
     preset_data = presets.get_preset_data(preset_choice)
-    default_premium = preset_data["market_premium"]
-    default_lr = int(preset_data["loss_ratio"] * 100)
-    default_exposure = preset_data["exposure"]
+    DEFAULT_PREMIUM = preset_data["market_premium"]
+    DEFAULT_LR = int(preset_data["loss_ratio"] * 100)
+    DEFAULT_EXPOSURE = preset_data["exposure"]
     st.sidebar.success(f"Données historiques '{preset_choice}' injectées !")
 
 st.sidebar.header("Paramètres de Souscription")
 
 market_premium_input = st.sidebar.number_input(
     "Prime Proposée par le Marché (€)", 
-    min_value=1000.0, value=float(default_premium), step=5000.0
+    min_value=1000.0, value=float(DEFAULT_PREMIUM), step=5000.0
 )
 historical_lr_input = st.sidebar.slider(
     "Loss Ratio Historique Sectoriel (%)", 
-    min_value=10, max_value=150, value=int(default_lr)
+    min_value=10, max_value=150, value=int(DEFAULT_LR)
 ) / 100.0
 exposure_input = st.sidebar.number_input(
     "Taille de la Flotte (Unités d'exposition)", 
-    min_value=5, max_value=500, value=int(default_exposure)
+    min_value=5, max_value=500, value=int(DEFAULT_EXPOSURE)
 )
-if mode_simulation == "Multi-Simulations (Stress-Test Portefeuille)":
+if sim_code == "Multi-Simulations (Stress-Test Portefeuille)":
     st.sidebar.markdown("---")
     st.sidebar.header("Paramètres Multi-Trajectoires")
     n_sim_input = st.sidebar.slider(
@@ -87,10 +87,10 @@ if mode_simulation == "Multi-Simulations (Stress-Test Portefeuille)":
 
 st.header("📄 Clauses Contractuelles Soumises")
 contract_text_input = st.text_area(
-    "Brut du traité soumis :", value=textes_exemples[preset_choice], height=100
+    "Brut du traité soumis :", value=SAMPLE_TEXTS[preset_choice], height=100
 )
 
-label_bouton = "Lancer l'Analyse Unitaire" if "Unitaire" in mode_simulation else "Exécuter le Stress-Test (Multi-Simulations)"
+label_bouton = "Lancer l'Analyse Unitaire" if "Unitaire" in sim_code else "Exécuter le Stress-Test (Multi-Simulations)"
 analyze_button = st.button(label_bouton, use_container_width=True)
 st.markdown("---")
 
@@ -101,7 +101,7 @@ if analyze_button:
     mc_engine = ScenarioSimulationService()
     agent = ParametriksPricingAgent(simulation_service=mc_engine)
     comparer = ModelComparisonService(simulation_service=mc_engine)
-    if "Unitaire" in mode_simulation:
+    if "Unitaire" in sim_code:
         with st.spinner("Analyse sémantique (BERT), simulations Monte Carlo et ajustements GLM/XGBoost en cours..."):
             poc_output = agent.analyze_contract_and_price(
                 contract_text=contract_text_input,
@@ -109,12 +109,12 @@ if analyze_button:
                 historical_loss_ratio=historical_lr_input,
                 exposure_count=exposure_input
             )
-            loss_ratio_ajuste = historical_lr_input * 0.85 if "limitation" in contract_text_input.lower() else historical_lr_input
+            adjusted_loss_ratio = historical_lr_input * 0.85 if "limitation" in contract_text_input.lower() else historical_lr_input
         
             bench_results = comparer.run_advanced_benchmarks(
                 BASE_PREMIUM=market_premium_input,
-                base_loss_ratio=loss_ratio_ajuste,
-                n_assures=exposure_input
+                base_loss_ratio=adjusted_loss_ratio,
+                n_insureds=exposure_input
             )
         analysis = poc_output["analysis"]
         decision = poc_output["actionable_decision"]
@@ -136,7 +136,7 @@ if analyze_button:
             st.markdown(f"**2. Étape Stochastique (Monte Carlo) :** 10 000 années de sinistralité ont été projetées.")
             st.write(f"*Résultat :* Le coût moyen simulé est de **{metrics['mean']:,.2f} €** face à une prime demandée de **{market_premium_input:,.2f} €**.")
         
-            st.markdown(f"**3. Arbitrage Décisionnel (La Règle Métier) :**")
+            st.markdown(f"**3. Décision de l'agent:**")
             if status == "REFER_TO_HUMAN":
                 st.write(f"🛑 *Pourquoi ce blocage ?* Bien que l'opportunité de profit soit réelle (Combined Ratio de {analysis['projected_combined_ratio']*100:.1f}%), la perte catastrophe à 99% (**{metrics['var_99']:,.2f} €**) dépasse vos capacités. L'agent refuse l'immédiateté commerciale pour **protéger vos fonds propres**.")
             elif status == "SUBSCRIBE_IMMEDIATELY":
@@ -144,11 +144,11 @@ if analyze_button:
             else:
                 st.write(f"Le profil de risque ne valide pas les critères de souscription automatiques.")
         
-            status_box.update(label="Raisonnement de l'agent entièrement décodé", state="complete")
+            status_box.update(label="Raisonnement de l'agent", state="complete")
             st.info(f"**📋 Plan d'action recommandé :** {decision['recommendation']}")
 
 
-            st.markdown("#### Métriques Clés d'Analyse")
+            st.markdown("#### Métriques d'Analyse")
             m1, m2, m3, m4, m5 = st.columns(5)
             m1.metric("Combined Ratio Projeté", f"{analysis['projected_combined_ratio']*100:.1f} %", help="Inférieur à 85% = Excellent")
             m2.metric("Prime proposée", f"{decision['proposed_premium']:.1f} €", help="Inférieur à 85% = Excellent")
@@ -163,12 +163,12 @@ if analyze_button:
 
             # Recréation de la distribution cumulative (simulation des percentiles de P50 à P99.9)
             percentiles_axes = ['50', '75', '90', '95', '99']
-            pertes_valeurs = [metrics['percentiles'][p] for p in percentiles_axes]
+            losses = [metrics['percentiles'][p] for p in percentiles_axes]
             fig_distribution = go.Figure()
 
             fig_distribution.add_trace(go.Scatter(
                 x=percentiles_axes, 
-                y=pertes_valeurs,
+                y=losses,
                 mode='lines+markers',
                 name='Pertes Cumulées (Monte Carlo)',
                 line=dict(color='#2980b9', width=3),
@@ -217,10 +217,10 @@ if analyze_button:
             df_table = pd.DataFrame({
             "Architecture du Modèle": ["Charge Réelle (Moteur MC)", "GLM Tweedie (Standard)", "Découplé Fréquence/Sévérité", "XGBoost Monotone (ML Controlled)"],
             "Collecte Totale Portefeuille": [
-                f"{totals['charge_reelle_mc']/default_exposure} €", 
-                f"{totals['prime_globale_tweedie']/default_exposure} €", 
-                f"{totals['prime_globale_freq_sev']/default_exposure} €", 
-                f"{totals['prime_globale_xgboost']/default_exposure} €"
+                f"{totals['charge_reelle_mc']/DEFAULT_EXPOSURE} €", 
+                f"{totals['prime_globale_tweedie']/DEFAULT_EXPOSURE} €", 
+                f"{totals['prime_globale_freq_sev']/DEFAULT_EXPOSURE} €", 
+                f"{totals['prime_globale_xgboost']/DEFAULT_EXPOSURE} €"
             ],
             "Statut vs Coût Réel": [
                 "Baseline",
@@ -252,9 +252,6 @@ if analyze_button:
     
         st.caption("🎯 **Note technique :** Si l'écart est faible, cela démontre mathématiquement que la tarification du concurrent n'est pas linéaire mais suit précisément une politique de marge calée sur le 89ème percentile des pertes possibles.")
 
-# -------------------------------------------------------------------------
-    # MODE B : MULTI-SIMULATIONS (STRESS-TEST MACRO)
-    # -------------------------------------------------------------------------
     else:
         with st.spinner(f"Génération de {n_sim_input} trajectoires de marché macro..."):
             # Simulation d'un vecteur de résultats macro sur N itérations
@@ -272,11 +269,8 @@ if analyze_button:
             combined_ratio_moyen_macro = pertes_totales_simulees / primes_collectees_totatles
             proba_ruine_macro = np.mean(trajectoires_pertes > market_premium_input)
 
-            # --- CALCUL DU PRICING MACRO COMBINÉ ---
             # Simulation des comportements de tarification globale des différents modèles
-            # Chaque modèle charge le risque différemment selon le profil sémantique/technique
-            charge_ia = presets.surcharges_ia.get(preset_choice, 1.30)
-            
+            charge_ia = presets.surcharges_ia.get(preset_choice, 1.30)           
             prime_moy_parametriks = market_premium_input * charge_ia
             prime_moy_xgboost = market_premium_input * (1.18 if preset_choice in ["Auto", "Tech"] else 1.45)
             prime_moy_tweedie = market_premium_input * (1.05 if preset_choice == "Auto" else 1.12)
@@ -300,7 +294,7 @@ if analyze_button:
 
         st.subheader("2. Benchmark de Pricing Macro & Sélection du Modèle Optimal")
         
-        # Calcul de la probabilité de ruine spécifique à CHAQUE modèle
+        # calcul de la probabilité de ruine specifique à CHAQUE modèle
         ruine_parametriks = np.mean(trajectoires_pertes > prime_moy_parametriks)
         ruine_xgboost = np.mean(trajectoires_pertes > prime_moy_xgboost)
         ruine_tweedie = np.mean(trajectoires_pertes > prime_moy_tweedie)
@@ -323,7 +317,7 @@ if analyze_button:
         st.success(f"**Modèle optimal pour le scénario [{preset_choice}] : {optimal_model}**")
         st.write(f"*Pourquoi ce choix ?* {optimal_model_score[3]} (Score d'Adéquation : **{optimal_model_score[2]*100:.1f} pts**)")
 
-        # Tableau Comparatif des Modèles au niveau Macro
+        # Tableau des Modèles 
         df_macro_models = pd.DataFrame({
             "Architecture Modèle": list(scores.keys()),
             "Prime Moyenne Proposée (€)": [f"{v[0]:,.2f} €" for v in scores.values()],
@@ -334,7 +328,7 @@ if analyze_button:
         
         st.dataframe(df_macro_models, hide_index=True, use_container_width=True)
 
-        # Graphique à barres comparatif des Primes vs P95/P99 pour illustrer la décision
+        # graphique à barres des Primes vs P95/P99 pour illustrer la décision
         st.markdown("#### Confrontation des Tarifs Modèles aux Seuils de Choc stochastiques")
         p95_macro = np.percentile(trajectoires_pertes, 95)
         p99_macro = np.percentile(trajectoires_pertes, 99)
@@ -375,5 +369,5 @@ if analyze_button:
         fig_hist.update_layout(xaxis_title="Sinistralité Agrégée par Scénario (€)", yaxis_title="Occurrences", height=300)
         st.plotly_chart(fig_hist, use_container_width=True)
 else:
-    # État initial de la page (Vide)
+    # page vide
     st.info("💡 Sélectionnez vos paramètres dans le panneau de gauche et cliquez sur **Lancer le Benchmark Global** pour déployer l'analyse unifiée.")

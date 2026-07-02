@@ -1,93 +1,93 @@
 import numpy as np
 import pandas as pd
 
-def simulate_claims(years=5, seed=42):
+def simulate_claims(years=5, seed=2026):
     """
-    Simule un historique de sinistres pour 5 catégories de risques actuariels.
+    Simulates a claims history for 5 actuarial risk profiles.
     """
     np.random.seed(seed)
-    donnees = []
+    claim_data = []
     
-    profils = {
+    INSURANCE_PROFILES = {
         "Auto": {
             "lambda": 120, 
-            "loi": "gamma", 
-            "param": {"shape": 2, "scale": 750}  # Moyenne = 1500€
+            "dist": "gamma", 
+            "param": {"shape": 2, "scale": 750} # Average = 1500€
         },
-        "Industrie": {
+        "Industry": {
             "lambda": 15, 
-            "loi": "lognormal", 
-            "param": {"meanlog": 10.5, "sdlog": 1.2}  # Médiane ~36k€
+            "dist": "lognormal", 
+            "param": {"meanlog": 10.5, "sdlog": 1.2} # Median ~36k€
         },
         "Cyber": {
             "lambda": 4, 
-            "loi": "pareto", 
-            "param": {"alpha": 1.2, "xmin": 50000}  # Queue très lourde
+            "dist": "pareto", 
+            "param": {"alpha": 1.2, "xmin": 50000} # Very heavy tail
         },
         "Tech": {
             "lambda": 25, 
-            "loi": "lognormal", 
+            "dist": "lognormal", 
             "param": {"meanlog": 9.2, "sdlog": 0.8}
         },
-        "RC_Generale": {
+        "RC_General": {
             "lambda": 8, 
-            "loi": "pareto", 
+            "dist": "pareto", 
             "param": {"alpha": 1.6, "xmin": 20000}
         }
     }
     
-    for annee in range(1, years + 1):
-        for cat, config in profils.items():
-            n_sinistres = np.random.poisson(config["lambda"])
-            if n_sinistres == 0:
+    for year in range(1, years + 1):
+        for profile, config in INSURANCE_PROFILES.items():
+            n_claims = np.random.poisson(config["lambda"])
+            if n_claims == 0:
                 continue
                 
-            if config["loi"] == "gamma":
-                couts = np.random.gamma(shape=config["param"]["shape"], scale=config["param"]["scale"], size=n_sinistres)
-            elif config["loi"] == "lognormal":
-                couts = np.random.lognormal(mean=config["param"]["meanlog"], sigma=config["param"]["sdlog"], size=n_sinistres)
-            elif config["loi"] == "pareto":
-                u = np.random.uniform(0, 1, size=n_sinistres)
-                couts = config["param"]["xmin"] * (1 - u) ** (-1 / config["param"]["alpha"])
+            if config["dist"] == "gamma":
+                claim_amounts = np.random.gamma(shape=config["param"]["shape"], scale=config["param"]["scale"], size=n_claims)
+            elif config["dist"] == "lognormal":
+                claim_amounts = np.random.lognormal(mean=config["param"]["meanlog"], sigma=config["param"]["sdlog"], size=n_claims)
+            elif config["dist"] == "pareto":
+                u = np.random.uniform(0, 1, size=n_claims)
+                claim_amounts = config["param"]["xmin"] * (1 - u) ** (-1 / config["param"]["alpha"])
             
-            for i in range(n_sinistres):
-                donnees.append({
-                    "Annee": annee,
-                    "Categorie": cat,
-                    "ID_Sinistre": f"S_{annee}_{cat[:3].upper()}_{i+1}",
-                    "Montant": round(couts[i], 2)
+            for i in range(n_claims):
+                claim_data.append({
+                    "Year": year,
+                    "Profile": profile,
+                    "Claim_ID": f"S_{year}_{profile[:3].upper()}_{i+1}",
+                    "Amount": round(claim_amounts[i], 2)
                 })
                 
-    return pd.DataFrame(donnees)
+    return pd.DataFrame(claim_data)
 
-# Génération au chargement du module
-df_sinistres = simulate_claims(years=5)
-calcul_secteurs = df_sinistres.groupby("Categorie")["Montant"].sum().reset_index()
-calcul_secteurs["Cout_Annuel_Moyen"] = calcul_secteurs["Montant"] / 5
+# Generation on module loading
+df_claims = simulate_claims(years=5)
+total_costs_by_sector = df_claims.groupby("Profile")["Amount"].sum().reset_index()
+total_costs_by_sector["Avg_Annual_Cost"] = total_costs_by_sector["Amount"] / 5
 
-# Ratios SFCR benchmark du marché
+# Market benchmark SFCR ratios
 loss_ratios_benchmark = {
-    "Auto": {"Leaders": 0.7210, "Intermédiaires": 0.7408, "Petites_InsurTechs": 0.6900},
-    "Industrie": {"Leaders": 0.6427, "Intermédiaires": 0.6512, "Petites_InsurTechs": 0.6475},
-    "Cyber": {"Leaders": 0.4734, "Intermédiaires": 0.4487, "Petites_InsurTechs": 0.4829},
-    "Tech": {"Leaders": 0.5859, "Intermédiaires": 0.5846, "Petites_Mutuelles": 0.5077},
-    "RC_Generale": {"Leaders": 0.6548, "Intermédiaires": 0.6420, "Petites_Mutuelles": 0.7109}
+    "Auto": {"Leaders": 0.7210, "Intermediate": 0.7408, "Small_Startups": 0.6900},
+    "Industry": {"Leaders": 0.6427, "Intermediate": 0.6512, "Small_Startups": 0.6475},
+    "Cyber": {"Leaders": 0.4734, "Intermediate": 0.4487, "Small_Startups": 0.4829},
+    "Tech": {"Leaders": 0.5859, "Intermediate": 0.5846, "Small_Syndicates": 0.5077},
+    "RC_Generale": {"Leaders": 0.6548, "Intermediate": 0.6420, "Small_Syndicates": 0.7109}
 }
 
-ratios_moyens_marche = {k: (v["Leaders"] + v["Intermédiaires"] + list(v.values())[2]) / 3 for k, v in loss_ratios_benchmark.items()}
-calcul_secteurs["Ratio_SFCR_Moyen"] = calcul_secteurs["Categorie"].map(ratios_moyens_marche)
-calcul_secteurs["Prime_Marche_Traditionnel"] = calcul_secteurs["Cout_Annuel_Moyen"] / calcul_secteurs["Ratio_SFCR_Moyen"]
-surcharges_ia = {"Auto": 1.15, "Cyber": 1.60, "Industrie": 1.30, "RC_Generale": 1.40, "Tech": 1.25}
-calcul_secteurs["Prime_Parametriks"] = calcul_secteurs["Prime_Marche_Traditionnel"] * calcul_secteurs["Categorie"].map(surcharges_ia)
+avg_market_loss_ratios = {k: (v["Leaders"] + v["Intermediate"] + list(v.values())[2]) / 3 for k, v in loss_ratios_benchmark.items()}
+total_costs_by_sector["Avg_Losses"] = total_costs_by_sector["Profile"].map(avg_market_loss_ratios)
+total_costs_by_sector["Theoretical_Market_Premium"] = total_costs_by_sector["Avg_Annual_Cost"] / total_costs_by_sector["Avg_Losses"]
+AI_WEIGHTS = {"Auto": 1.15, "Cyber": 1.60, "Industry": 1.30, "RC_Generale": 1.40, "Tech": 1.25}
+total_costs_by_sector["Parametriks_Premium"] = total_costs_by_sector["Theoretical_Market_Premium"] * total_costs_by_sector["Profile"].map(AI_WEIGHTS)
 
-def get_preset_data(categorie: str) -> dict:
+def get_preset_data(Profile: str) -> dict:
     """
-    Extrait les paramètres d'un secteur pour alimenter l'UI de manière transparente.
+    Extracts settings from a sector to seamlessly populate the UI.
     """
-    row = calcul_secteurs[calcul_secteurs["Categorie"] == categorie].iloc[0]
+    row = total_costs_by_sector[total_costs_by_sector["Profile"] == Profile].iloc[0]
     return {
-        "market_premium": float(row["Prime_Marche_Traditionnel"]),
-        "loss_ratio": float(row["Ratio_SFCR_Moyen"]),
-        "target_premium": float(row["Prime_Parametriks"]),
-        "exposure": 120 if categorie == "Auto" else (25 if categorie == "Tech" else 15) # Aligné sur l'exposition de l'historique
+        "market_premium": float(row["Theoretical_Market_Premium"]),
+        "loss_ratio": float(row["Avg_Losses"]),
+        "target_premium": float(row["Parametriks_Premium"]),
+        "exposure": 120 if Profile == "Auto" else (25 if Profile == "Tech" else 15) # Aligned to history exposure
     }
