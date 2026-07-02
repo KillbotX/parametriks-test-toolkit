@@ -14,7 +14,7 @@ def simulate_claims(years=5, seed=2026):
             "dist": "gamma", 
             "param": {"shape": 2, "scale": 750} # Average = 1500€
         },
-        "Industry": {
+        "Industrie": {
             "lambda": 15, 
             "dist": "lognormal", 
             "param": {"meanlog": 10.5, "sdlog": 1.2} # Median ~36k€
@@ -29,7 +29,7 @@ def simulate_claims(years=5, seed=2026):
             "dist": "lognormal", 
             "param": {"meanlog": 9.2, "sdlog": 0.8}
         },
-        "RC_General": {
+        "RC_Generale": {
             "lambda": 8, 
             "dist": "pareto", 
             "param": {"alpha": 1.6, "xmin": 20000}
@@ -68,7 +68,7 @@ total_costs_by_sector["Avg_Annual_Cost"] = total_costs_by_sector["Amount"] / 5
 # Market benchmark SFCR ratios
 loss_ratios_benchmark = {
     "Auto": {"Leaders": 0.7210, "Intermediate": 0.7408, "Small_Startups": 0.6900},
-    "Industry": {"Leaders": 0.6427, "Intermediate": 0.6512, "Small_Startups": 0.6475},
+    "Industrie": {"Leaders": 0.6427, "Intermediate": 0.6512, "Small_Startups": 0.6475},
     "Cyber": {"Leaders": 0.4734, "Intermediate": 0.4487, "Small_Startups": 0.4829},
     "Tech": {"Leaders": 0.5859, "Intermediate": 0.5846, "Small_Syndicates": 0.5077},
     "RC_Generale": {"Leaders": 0.6548, "Intermediate": 0.6420, "Small_Syndicates": 0.7109}
@@ -77,7 +77,7 @@ loss_ratios_benchmark = {
 avg_market_loss_ratios = {k: (v["Leaders"] + v["Intermediate"] + list(v.values())[2]) / 3 for k, v in loss_ratios_benchmark.items()}
 total_costs_by_sector["Avg_Losses"] = total_costs_by_sector["Profile"].map(avg_market_loss_ratios)
 total_costs_by_sector["Theoretical_Market_Premium"] = total_costs_by_sector["Avg_Annual_Cost"] / total_costs_by_sector["Avg_Losses"]
-AI_WEIGHTS = {"Auto": 1.15, "Cyber": 1.60, "Industry": 1.30, "RC_Generale": 1.40, "Tech": 1.25}
+AI_WEIGHTS = {"Auto": 1.15, "Cyber": 1.60, "Industrie": 1.30, "RC_Generale": 1.40, "Tech": 1.25}
 total_costs_by_sector["Parametriks_Premium"] = total_costs_by_sector["Theoretical_Market_Premium"] * total_costs_by_sector["Profile"].map(AI_WEIGHTS)
 
 def get_preset_data(Profile: str) -> dict:

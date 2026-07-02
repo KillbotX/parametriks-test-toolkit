@@ -32,14 +32,125 @@ SAMPLE_TEXTS = {
 
 # streamlit config
 st.set_page_config(
-    page_title="Parametriks Cockpit Pricing",
+    page_title="Parametriks Pricing Agent",
     page_icon="🦅",
     layout="wide"
 )
+st.markdown("""
+    <style>
+    /* =========================================================================
+       1. FONDS ET CONFIGURATION STRUCTURELLE (DARK MODE)
+       ========================================================================= */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    .stApp {
+        background-color: #0B0F19; /* Fond de page : Bleu nuit de l'espace profond */
+        font-family: 'Inter', -apple-system, sans-serif;
+        color: #E2E8F0;
+    }
+
+    /* Titres Typographiques Épurés */
+    h1, h2, h3, h4 {
+        color: #F8FAFC !important; /* Blanc pur avec un léger reflet */
+        font-weight: 600 !important;
+        letter-spacing: -0.02em !important;
+    }
+    
+    /* Nettoyage des bordures par défaut de Streamlit */
+    hr {
+        border-color: #1E293B !important;
+    }
+
+    header, footer {
+        visibility: hidden !important;
+    }
+
+    /* =========================================================================
+       2. CRÉATION DES CARTES VITRÉES INTERACTIVES (st.metric)
+       ========================================================================= */
+    div[data-testid="stMetric"] {
+        background-color: #111827 !important; /* Gris anthracite de conteneur */
+        border: 1px solid #1F2937 !important; /* Bordure subtile */
+        padding: 20px 24px !important;
+        border-radius: 12px !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -2px rgba(0, 0, 0, 0.2) !important;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    div[data-testid="stMetric"]:hover {
+        border-color: #3b82f6 !important; /* Éclat bleu électrique discret au survol */
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4) !important;
+    }
+    
+    /* Customisation des textes à l'intérieur des métriques */
+    div[data-testid="stMetricLabel"] p {
+        color: #94A3B8 !important; /* Gris moyen pour le contraste secondaire */
+        font-size: 0.85rem !important;
+        font-weight: 500 !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    div[data-testid="stMetricValue"] div {
+        color: #F8FAFC !important;
+        font-size: 1.8rem !important;
+        font-weight: 700 !important;
+    }
+
+    /* =========================================================================
+       3. BOUTON CYBER-ACTION (Call To Action)
+       ========================================================================= */
+    div.stButton > button:first-child {
+        background-color: #3B82F6 !important; /* Bleu Électrique Vercel */
+        color: #FFFFFF !important;
+        border: 1px solid #2563EB !important;
+        border-radius: 8px !important;
+        padding: 14px 28px !important;
+        font-size: 1rem !important;
+        font-weight: 600 !important;
+        width: 100%;
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2) !important;
+        transition: all 0.2s ease !important;
+    }
+    div.stButton > button:first-child:hover {
+        background-color: #2563EB !important;
+        box-shadow: 0 12px 20px -3px rgba(59, 130, 246, 0.4) !important;
+        transform: translateY(-1px);
+    }
+
+    /* =========================================================================
+       4. CONTRÔLES FORMULAIRES & BARRE LATÉRALE CYBERPUNK CHIC
+       ========================================================================= */
+    section[data-testid="stSidebar"] {
+        background-color: #0F172A !important; /* Ardoise très sombre */
+        border-right: 1px solid #1E293B !important;
+    }
+    
+    /* Inputs, sélecteurs et zones de texte unifiés */
+    div[data-baseweb="select"], div[data-baseweb="input"], textarea {
+        background-color: #0F172A !important;
+        color: #F8FAFC !important;
+        border-radius: 8px !important;
+        border: 1px solid #1E293B !important;
+    }
+    
+    /* Fix pour la couleur du texte saisi dans les inputs */
+    input, textarea {
+        color: #F8FAFC !important;
+    }
+
+    /* Accordéons (st.expander) au design intégré */
+    div[data-testid="stExpander"] {
+        background-color: #111827 !important;
+        border: 1px solid #1F2937 !important;
+        border-radius: 8px !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 st.title("Parametriks AI Pricing Cockpit")
 st.subheader("Analyse du pricing des modèles de Parametriks et comparaison effective avec d'autres modèles")
 st.markdown("---")
+
 
 st.sidebar.header("Portée de la Simulation")
 sim_code = st.sidebar.radio(
@@ -78,21 +189,24 @@ exposure_input = st.sidebar.number_input(
 )
 if sim_code == "Multi-Simulations (Stress-Test Portefeuille)":
     st.sidebar.markdown("---")
-    st.sidebar.header("Paramètres Multi-Trajectoires")
+    st.sidebar.header("Paramètres")
     n_sim_input = st.sidebar.slider(
-        "Nombre de simulations globales (Scénarios)", 
+        "Nombre de simulations", 
         min_value=100, max_value=5000, value=1000, step=100
+    )
+    kpi_choisi = st.sidebar.selectbox(
+        "KPI de comparaison de modèles :",
+        options=["Ratio Risque/Rendement (Sharpe Adapté)", "Résilience aux Chocs de Queue (TVaR 95%)", "Efficacité du Capital Économique (RoRC)", "Indice de Prudence (Marge de Sécurité)"]
     )
 
 
-st.header("📄 Clauses Contractuelles Soumises")
+st.header("Clauses Contractuelles Soumises")
 contract_text_input = st.text_area(
     "Brut du traité soumis :", value=SAMPLE_TEXTS[preset_choice], height=100
 )
 
 label_bouton = "Lancer l'Analyse Unitaire" if "Unitaire" in sim_code else "Exécuter le Stress-Test (Multi-Simulations)"
 analyze_button = st.button(label_bouton, use_container_width=True)
-st.markdown("---")
 
 
 
@@ -145,28 +259,28 @@ if analyze_button:
                 st.write(f"Le profil de risque ne valide pas les critères de souscription automatiques.")
         
             status_box.update(label="Raisonnement de l'agent", state="complete")
-            st.info(f"**📋 Plan d'action recommandé :** {decision['recommendation']}")
+        st.info(f"**📋 Plan d'action recommandé :** {decision['recommendation']}")
 
 
-            st.markdown("#### Métriques d'Analyse")
-            m1, m2, m3, m4, m5 = st.columns(5)
-            m1.metric("Combined Ratio Projeté", f"{analysis['projected_combined_ratio']*100:.1f} %", help="Inférieur à 85% = Excellent")
-            m2.metric("Prime proposée", f"{decision['proposed_premium']:.1f} €", help="Inférieur à 85% = Excellent")
-            m3.metric("Marge Technique Attendue", f"{analysis['technical_margin_euros']:,.2f} €")
-            m4.metric("Scénario Catastrophe (VaR 99)", f"{metrics['percentiles']['99']:,.2f} €")
-            m5.metric("Couverture VaR 99", f"{analysis['var_99_safety_multiplier']:.2f}x", 
+        st.markdown("#### Métriques d'Analyse")
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("Combined Ratio Projeté", f"{analysis['projected_combined_ratio']*100:.1f} %", help="Inférieur à 85% = Excellent")
+        m2.metric("Prime proposée", f"{decision['proposed_premium']:.1f} €", help="Inférieur à 85% = Excellent")
+        m3.metric("Marge Technique Attendue", f"{analysis['technical_margin_euros']:,.2f} €")
+        m4.metric("Scénario Catastrophe (VaR 99)", f"{metrics['percentiles']['99']:,.2f} €")
+        m5.metric("Couverture VaR 99", f"{analysis['var_99_safety_multiplier']:.2f}x", 
                     delta="Sécurisé" if analysis['var_99_safety_multiplier'] >= 1.0 else "Sous-capitalisé",
                     delta_color="normal" if analysis['var_99_safety_multiplier'] >= 1.0 else "inverse")
 
-            st.markdown("---")
-            st.markdown("#### Courbe de Risque & Positionnement de la Prime")
+        st.markdown("---")
+        st.markdown("#### Courbe de Risque & Positionnement de la Prime")
 
             # Recréation de la distribution cumulative (simulation des percentiles de P50 à P99.9)
-            percentiles_axes = ['50', '75', '90', '95', '99']
-            losses = [metrics['percentiles'][p] for p in percentiles_axes]
-            fig_distribution = go.Figure()
+        percentiles_axes = ['50', '75', '90', '95', '99']
+        losses = [metrics['percentiles'][p] for p in percentiles_axes]
+        fig_distribution = go.Figure()
 
-            fig_distribution.add_trace(go.Scatter(
+        fig_distribution.add_trace(go.Scatter(
                 x=percentiles_axes, 
                 y=losses,
                 mode='lines+markers',
@@ -175,7 +289,7 @@ if analyze_button:
                 hovertemplate='Percentile %{x} : %{y:,.2f} €<extra></extra>'
             ))
 
-            fig_distribution.add_trace(go.Scatter(
+        fig_distribution.add_trace(go.Scatter(
                 x=percentiles_axes,
                 y=[market_premium_input] * len(percentiles_axes),
                 mode='lines',
@@ -184,7 +298,7 @@ if analyze_button:
                 hovertemplate='Prime : %{y:,.2f} €<extra></extra>'
             ))
 
-            fig_distribution.update_layout(
+        fig_distribution.update_layout(
                 title=f"Distribution de la Queue de Soumission ({preset_choice}) vs Prime",
                 xaxis_title="Percentile de Sévérité (Scénarios du plus probable au plus extrême)",
                 yaxis_title="Montant des Pertes / Primes (€)",
@@ -193,21 +307,21 @@ if analyze_button:
                 height=350
             )
 
-            st.plotly_chart(fig_distribution, use_container_width=True)
-            st.caption("**Interprétation visuelle :** Si la ligne rouge (Prime) passe en dessous de la courbe bleue avant le point P99, le risque de ruine statistique est matériel. C'est exactement ce repère visuel qui déclenche l'alerte de l'Agent.")
-            st.header("2. Benchmark de Tarification Portefeuille")
-            st.write("Visualisation de la capacité des différents modèles du marché à capter le surpricing sur un portefeuille global.")
-            totals = bench_results["totals"] 
-            col_graph, col_table = st.columns([1.2, 1.8])
+        st.plotly_chart(fig_distribution, use_container_width=True)
+        st.caption("**Interprétation visuelle :** Si la ligne rouge (Prime) passe en dessous de la courbe bleue avant le point P99, le risque de ruine statistique est matériel. C'est exactement ce repère visuel qui déclenche l'alerte de l'Agent.")
+        st.header("2. Benchmark de Tarification Portefeuille")
+        st.write("Visualisation de la capacité des différents modèles du marché à capter le surpricing sur un portefeuille global.")
+        totals = bench_results["totals"] 
+        col_graph, col_table = st.columns([1.2, 1.8])
     
         with col_graph:
         # Transformation pour graphique Streamlit
             df_chart = pd.DataFrame({
             "Prime Globale (€)": [
-                totals["charge_reelle_mc"], 
-                totals["prime_globale_tweedie"], 
-                totals["prime_globale_freq_sev"], 
-                totals["prime_globale_xgboost"]
+                totals["real_mc_loss"], 
+                totals["global_tweedie_premium"], 
+                totals["global_freq_sev_premium"], 
+                totals["global_xgb_premium"]
             ]
             }, index=["Charge Réelle (MC)", "GLM Tweedie", "Fréquence / Sévérité", "XGBoost Monotone"])
         
@@ -217,16 +331,16 @@ if analyze_button:
             df_table = pd.DataFrame({
             "Architecture du Modèle": ["Charge Réelle (Moteur MC)", "GLM Tweedie (Standard)", "Découplé Fréquence/Sévérité", "XGBoost Monotone (ML Controlled)"],
             "Collecte Totale Portefeuille": [
-                f"{totals['charge_reelle_mc']/DEFAULT_EXPOSURE} €", 
-                f"{totals['prime_globale_tweedie']/DEFAULT_EXPOSURE} €", 
-                f"{totals['prime_globale_freq_sev']/DEFAULT_EXPOSURE} €", 
-                f"{totals['prime_globale_xgboost']/DEFAULT_EXPOSURE} €"
+                f"{totals['real_mc_loss']/DEFAULT_EXPOSURE} €", 
+                f"{totals['global_tweedie_premium']/DEFAULT_EXPOSURE} €", 
+                f"{totals['global_freq_sev_premium']/DEFAULT_EXPOSURE} €", 
+                f"{totals['global_xgb_premium']/DEFAULT_EXPOSURE} €"
             ],
             "Statut vs Coût Réel": [
                 "Baseline",
-                "🔴 SURPRICED" if totals["prime_globale_tweedie"] > totals["charge_reelle_mc"] else "🔵 UNDERPRICED",
-                "🔴 SURPRICED" if totals["prime_globale_freq_sev"] > totals["charge_reelle_mc"] else "🔵 UNDERPRICED",
-                "🔴 SURPRICED" if totals["prime_globale_xgboost"] > totals["charge_reelle_mc"] else "🔵 UNDERPRICED"
+                "🔴 SURPRICED" if totals["global_tweedie_premium"] > totals["real_mc_loss"] else "🔵 UNDERPRICED",
+                "🔴 SURPRICED" if totals["global_freq_sev_premium"] > totals["real_mc_loss"] else "🔵 UNDERPRICED",
+                "🔴 SURPRICED" if totals["global_xgb_premium"] > totals["real_mc_loss"] else "🔵 UNDERPRICED"
             ]
             })
             st.dataframe(df_table, hide_index=True, use_container_width=True)
@@ -246,7 +360,7 @@ if analyze_button:
     
             c_repro1.metric(
                 label="Tarif Moyen du Clone Modélisé (P89)", 
-                value=f"{bench_results['totals']['prime_globale_quantreg']:,.2f} €"
+                value=f"{bench_results['totals']['global_quantreg_premium']:,.2f} €"
             )
     
     
@@ -270,7 +384,7 @@ if analyze_button:
             proba_ruine_macro = np.mean(trajectoires_pertes > market_premium_input)
 
             # Simulation des comportements de tarification globale des différents modèles
-            charge_ia = presets.surcharges_ia.get(preset_choice, 1.30)           
+            charge_ia = presets.AI_WEIGHTS.get(preset_choice, 1.30)           
             prime_moy_parametriks = market_premium_input * charge_ia
             prime_moy_xgboost = market_premium_input * (1.18 if preset_choice in ["Auto", "Tech"] else 1.45)
             prime_moy_tweedie = market_premium_input * (1.05 if preset_choice == "Auto" else 1.12)
@@ -291,31 +405,51 @@ if analyze_button:
         mc3.metric("Pire Scénario Généré (Max)", f"{np.max(trajectoires_pertes):,.2f} €")
 
         st.markdown("---")
-
         st.subheader("2. Benchmark de Pricing Macro & Sélection du Modèle Optimal")
         
-        # calcul de la probabilité de ruine specifique à CHAQUE modèle
+
+        # Calcul préalable des quantiles des pertes
+        p95_macro = np.percentile(trajectoires_pertes, 95)
+        p99_macro = np.percentile(trajectoires_pertes, 99)
+        tvar_95_macro = np.mean(trajectoires_pertes[trajectoires_pertes >= p95_macro])
+        # calcul de la probabilité de ruine specifique à chaque modèle
         ruine_parametriks = np.mean(trajectoires_pertes > prime_moy_parametriks)
         ruine_xgboost = np.mean(trajectoires_pertes > prime_moy_xgboost)
         ruine_tweedie = np.mean(trajectoires_pertes > prime_moy_tweedie)
         ruine_freq_sev = np.mean(trajectoires_pertes > prime_moy_freq_sev)
 
-        def calculate_model_score(prime_mod, proba_ruine):
-            marge_brute = (prime_mod - mu_perte) / prime_mod
-            penalite_ruine = proba_ruine * 2.5
-            return max(0.0, marge_brute - penalite_ruine)
+
+        #Sharpe ratio, Rorc, TVaR...
+        def calculate_model_score(prime_mod, proba_ruine, nom_kpi):
+            marge_brute = (prime_mod - mu_perte) / prime_mod          
+            if nom_kpi == "Sharpe Ratio":
+                return max(0.0, marge_brute - (proba_ruine * 2.5))
+                
+            elif nom_kpi == "TVaR 95%":
+                return float(min(100.0, (prime_mod / tvar_95_macro) * 100))
+                
+            elif nom_kpi == "Efficacité du Capital Économique (RoRC)":
+                capital_requis = max(1000.0, p99_macro - (prime_mod - mu_perte))
+                rorc = (prime_mod - mu_perte) / capital_requis
+                return float(max(0.0, rorc * 100))
+                
+            elif nom_kpi == "Indice de Prudence (Marge de Sécurité)":
+                return float((prime_mod - mu_perte) / mu_perte * 100)
+                
+            return 0.0
 
         scores = {
-            "Parametriks Engine (IA)": (prime_moy_parametriks, ruine_parametriks, calculate_model_score(prime_moy_parametriks, ruine_parametriks), "Idéal pour couvrir les risques à queue lourde ou asymétriques grâce à sa marge de sécurité adaptative."),
-            "XGBoost Monotone (ML)": (prime_moy_xgboost, ruine_xgboost, calculate_model_score(prime_moy_xgboost, ruine_xgboost), "Excellent compromis pour capturer les non-linéarités complexes sur de grands portefeuilles."),
-            "GLM Tweedie (Standard)": (prime_moy_tweedie, ruine_tweedie, calculate_model_score(prime_moy_tweedie, ruine_tweedie), "Parfait pour les risques standardisés de haute fréquence et faible coût (ex: Auto). Fragile sur les queues lourdes."),
-            "Découplé Fréquence/Sévérité": (prime_moy_freq_sev, ruine_freq_sev, calculate_model_score(prime_moy_freq_sev, ruine_freq_sev), "Modèle classique robuste lorsque la fréquence et le coût unitaire évoluent de manière indépendante.")
+            "Parametriks Engine (IA)": (prime_moy_parametriks, ruine_parametriks, calculate_model_score(prime_moy_parametriks, ruine_parametriks, kpi_choisi)),
+            "XGBoost Monotone (ML)": (prime_moy_xgboost, ruine_xgboost, calculate_model_score(prime_moy_xgboost, ruine_xgboost, kpi_choisi)),
+            "GLM Tweedie (Standard)": (prime_moy_tweedie, ruine_tweedie, calculate_model_score(prime_moy_tweedie, ruine_tweedie, kpi_choisi)),
+            "Découplé Fréquence/Sévérité": (prime_moy_freq_sev, ruine_freq_sev, calculate_model_score(prime_moy_freq_sev, ruine_freq_sev, kpi_choisi))
         }
 
-        optimal_model = max(scores, key=lambda k: scores[k][2])
-        optimal_model_score = scores[optimal_model]
-        st.success(f"**Modèle optimal pour le scénario [{preset_choice}] : {optimal_model}**")
-        st.write(f"*Pourquoi ce choix ?* {optimal_model_score[3]} (Score d'Adéquation : **{optimal_model_score[2]*100:.1f} pts**)")
+        best_model = max(scores, key=lambda k: scores[k][2])
+        unit = "pts" if "Sharpe" in kpi_choisi else "%"
+        
+        st.success(f"**Modèle optimal via {kpi_choisi} : {best_model}**")
+        st.write(f"*Score optimal obtenu :* **{scores[best_model][2]:,.1f} {unit}**")
 
         # Tableau des Modèles 
         df_macro_models = pd.DataFrame({
@@ -323,7 +457,7 @@ if analyze_button:
             "Prime Moyenne Proposée (€)": [f"{v[0]:,.2f} €" for v in scores.values()],
             "Probabilité de Ruine Réduite": [f"{v[1]*100:.2f} %" for v in scores.values()],
             "Score Risque/Rendement": [f"{v[2]*100:.1f} / 100" for v in scores.values()],
-            "Statut du Modèle": ["Meilleur" if k == optimal_model else "Aligné" for k in scores.keys()]
+            "Statut du Modèle": ["Meilleur" if k == best_model else "Aligné" for k in scores.keys()]
         })
         
         st.dataframe(df_macro_models, hide_index=True, use_container_width=True)
@@ -339,7 +473,7 @@ if analyze_button:
             x=list(scores.keys()), 
             y=[v[0] for v in scores.values()],
             name="Niveau de Prime Émise",
-            marker_color=['#2ecc71' if k == optimal_model else '#34495e' for k in scores.keys()]
+            marker_color=['#2ecc71' if k == best_model else '#34495e' for k in scores.keys()]
         ))
         # Lignes de référence des chocs
         fig_macro_pricing.add_trace(go.Scatter(x=list(scores.keys()), y=[p95_macro]*4, mode='lines', name='Seuil de Choc P95 (Décennal)', line=dict(color='#f39c12', dash='dash')))
