@@ -5,13 +5,14 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 
-# Importation du backend et des presets 
+# Importation du backend, presets, base de ml
 from backend import (
     ScenarioSimulationService, 
     ParametriksPricingAgent, 
     ModelComparisonService
 )
 import presets
+from geneticalg import EvolutionaryPricingOptimizer
 
 
 
@@ -155,7 +156,7 @@ st.markdown("---")
 st.sidebar.header("Portée de la Simulation")
 sim_code = st.sidebar.radio(
     "Choisir le niveau d'analyse :",
-    options=["Analyse Unitaire (Détail Contrat)", "Multi-Simulations (Stress-Test Portefeuille)"]
+    options=["Analyse Unitaire (Détail Contrat)", "Multi-Simulations (Stress-Test Portefeuille)", "Entraînement modèle"]
 )
 
 st.sidebar.header("Chargement d'un Preset Portefeuille")
@@ -196,6 +197,16 @@ if sim_code == "Multi-Simulations (Stress-Test Portefeuille)":
     )
     kpi_choisi = st.sidebar.selectbox(
         "KPI de comparaison de modèles :",
+        options=["Sharpe Ratio", "Résilience aux Chocs de Queue (TVaR 95%)", "Efficacité du Capital Économique (RoRC)", "Indice de Prudence (Marge de Sécurité)"]
+    )
+elif sim_code == "Entraînement modèle":
+    st.sidebar.markdown("---")
+    st.sidebar.header("Paramètres de l'optimisation génétique")  
+    total_generations = st.sidebar.slider("Générations Totales", 10, 100, 40, 10)
+    population_size_input = st.sidebar.slider("Taille de la Population", 10, 50, 20, 5)
+    mutation_rate_input = st.sidebar.slider("Taux de Mutation (%)", 5, 50, 15, 5) / 100.0  
+    kpi_choisi = st.sidebar.selectbox(
+        "Objectif d'Optimisation (KPI Target) :",
         options=["Ratio Risque/Rendement (Sharpe Adapté)", "Résilience aux Chocs de Queue (TVaR 95%)", "Efficacité du Capital Économique (RoRC)", "Indice de Prudence (Marge de Sécurité)"]
     )
 
@@ -216,6 +227,7 @@ if analyze_button:
     agent = ParametriksPricingAgent(simulation_service=mc_engine)
     comparer = ModelComparisonService(simulation_service=mc_engine)
     if "Unitaire" in sim_code:
+        print(contract_text_input)
         with st.spinner("Analyse sémantique (BERT), simulations Monte Carlo et ajustements GLM/XGBoost en cours..."):
             poc_output = agent.analyze_contract_and_price(
                 contract_text=contract_text_input,
@@ -366,7 +378,7 @@ if analyze_button:
     
         st.caption("🎯 **Note technique :** Si l'écart est faible, cela démontre mathématiquement que la tarification du concurrent n'est pas linéaire mais suit précisément une politique de marge calée sur le 89ème percentile des pertes possibles.")
 
-    else:
+    elif "Multi-Simulations" in sim_code:
         with st.spinner(f"Génération de {n_sim_input} trajectoires de marché macro..."):
             # Simulation d'un vecteur de résultats macro sur N itérations
             mu_perte = market_premium_input * historical_lr_input
@@ -461,7 +473,6 @@ if analyze_button:
         })
         
         st.dataframe(df_macro_models, hide_index=True, use_container_width=True)
-
         # graphique à barres des Primes vs P95/P99 pour illustrer la décision
         st.markdown("#### Confrontation des Tarifs Modèles aux Seuils de Choc stochastiques")
         p95_macro = np.percentile(trajectoires_pertes, 95)
@@ -502,6 +513,171 @@ if analyze_button:
         fig_hist.add_vline(x=prime_moy_parametriks, line_width=2, line_color="#2ecc71", annotation_text="Cible Parametriks")
         fig_hist.update_layout(xaxis_title="Sinistralité Agrégée par Scénario (€)", yaxis_title="Occurrences", height=300)
         st.plotly_chart(fig_hist, use_container_width=True)
+    else:
+        st.header("Optimisation génétique du modèle")
+        st.write(f"Optimisation de l'ADN de l'agent face au profil de risque **{preset_choice}** pour maximiser le critère : **{kpi_choisi}**.")
+        
+        st.info(f" **Configuration active :** {total_generations} générations | {population_size_input} individus par vague | Taux de Mutation : {mutation_rate_input*100:.0f}%")
+        with st.spinner("Brassage génétique, sélection de l'élite et calcul des mutations stochastiques..."):
+            optimizer = EvolutionaryPricingOptimizer(
+                simulation_service=mc_engine,
+                n_generations=total_generations,
+                population_size=population_size_input,
+                mutation_rate=mutation_rate_input,
+                contract_text=contract_text_input,
+                market_premium=market_premium_input,
+                historical_lr=historical_lr_input,
+                exposure_count=exposure_input,
+            )
+            results = optimizer.optimize(
+                kpi_director=kpi_choisi,
+            )
+            
+        learning_curve = results["learning_curve"]
+        best_genes = results["best_genes"]
+        st.success(f" L'agent a stabilisé sa tarification d'équilibre à : **{results['optimized_premium']:,.2f} €**")
+        
+        # Grille de métriques avancées du Chromosome Élu
+        with st.container(border=True):
+            st.subheader("Chromosome optimal")
+            genes = results["best_genes"]
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Marge de Sécurité Globale", f"{genes['safety_margin']:.3f}x")
+            c2.metric("Seuil Quantile (Target VaR)", f"{genes['risk_quantile']*100:.2f} %")
+            c3.metric("Stress Factor Macro", f"{genes['macro_stress_factor']:.2f}x")
+
+# Double graphique d'analyse de la convergence
+        g1, g2 = st.columns(2)
+        
+        with g1:
+            fig_curve = px.line(
+                x=range(1, len(learning_curve) + 1), y=learning_curve,
+                labels={"x": "Générations", "y": "Score de Fitness"},
+                title="Courbe d'Apprentissage",
+                markers=True
+            )
+            fig_curve.update_traces(line_color='#2563EB', marker=dict(size=4))
+            st.plotly_chart(fig_curve, use_container_width=True)
+            
+        with g2:
+            # CORRECTION : Adaptation aux nouveaux gènes de simulation réels
+            fig_genes = go.Figure(go.Bar(
+                x=["Marge Sécurité", "Quantile Cible", "Stress Macro"],
+                y=[best_genes['safety_margin'], best_genes['risk_quantile'], best_genes['macro_stress_factor']],
+                marker_color=['#1E3A8A', '#10B981', '#F59E0B']
+            ))
+            fig_genes.update_layout(title="Configuration des Gènes Optimisés", height=325)
+            st.plotly_chart(fig_genes, use_container_width=True)
+
+        st.markdown("---")
+        st.subheader("Trajectoire du modèle")
+        st.write("Observez comment l'agent Parametriks se positionne face aux modèles classiques du marché à chaque étape clé de sa mutation génétique.")
+
+        paliers = [i for i in range(0, len(learning_curve), 10)]
+        if (len(learning_curve) - 1) not in paliers:
+            paliers.append(len(learning_curve) - 1)
+            
+        titles_tabs = [f"Génération {p if p > 0 else 1}" for p in paliers]
+        tabs = st.tabs(titles_tabs)
+
+        # Calcul de la prime de base native générée par votre agent du backend
+        from backend import ParametriksPricingAgent
+        native_agent = ParametriksPricingAgent(mc_engine)
+        base_parametriks_premium = native_agent.analyze_contract_and_price(
+                contract_text=contract_text_input,
+                market_premium=Decimal(str(market_premium_input)),
+                historical_loss_ratio=historical_lr_input,
+                exposure_count=exposure_input
+            )["actionable_decision"]["proposed_premium"]
+
+        mu_perte = market_premium_input * historical_lr_input
+        sigma_perte = mu_perte * (0.3 if "limitation" in contract_text_input.lower() else 0.6)
+        shape = np.sqrt(np.log(1 + (sigma_perte / mu_perte) ** 2))
+        scale = mu_perte / np.sqrt(1 + (sigma_perte / mu_perte) ** 2)
+        trajectoires_pertes = np.random.lognormal(mean=np.log(scale), sigma=shape, size=1000)
+        
+        p95_macro = np.percentile(trajectoires_pertes, 95)
+        p99_macro = np.percentile(trajectoires_pertes, 99)
+        tvar_95_macro = np.mean(trajectoires_pertes[trajectoires_pertes >= p95_macro])
+
+        for idx, palier in enumerate(paliers):
+            with tabs[idx]:
+                st.markdown(f"##### Comparaison des modèles — **Génération {palier if palier > 0 else 1}**")
+                
+                # CORRECTION : Trajectoire d'évolution reconstruite à partir des nouveaux gènes
+                ratio_evolution = (palier + 1) / len(learning_curve)
+                
+                # Progression linéaire pédagogique vers les hyperparamètres champions
+                interim_margin = 1.0 + (best_genes['safety_margin'] - 1.0) * ratio_evolution
+                interim_stress = 1.0 + (best_genes['macro_stress_factor'] - 1.0) * ratio_evolution
+                
+                # Reconstruction exacte de la formule de tarification de geneticalg.py
+                has_limitation = "limitation" in contract_text_input.lower()
+                prime_parametriks_interim = base_parametriks_premium * interim_margin * (interim_stress if not has_limitation else 1.0)
+                
+                prime_moy_xgboost = market_premium_input * (1.18 if preset_choice in ["Auto", "Tech"] else 1.45)
+                prime_moy_tweedie = market_premium_input * (1.05 if preset_choice == "Auto" else 1.12)
+                prime_moy_freq_sev = market_premium_input * 1.20
+
+                ruine_param = np.mean(trajectoires_pertes > prime_parametriks_interim)
+                ruine_xgb = np.mean(trajectoires_pertes > prime_moy_xgboost)
+                ruine_tweedie = np.mean(trajectoires_pertes > prime_moy_tweedie)
+                ruine_freq_sev = np.mean(trajectoires_pertes > prime_moy_freq_sev)
+
+                def evaluer_modele_kpi_pur(prime_mod, proba_ruine):
+                    marge_brute = (prime_mod - mu_perte) / prime_mod
+                    
+                    if kpi_choisi == "Ratio Risque/Rendement (Sharpe Adapté)":
+                        return max(0.0, marge_brute - (proba_ruine * 2.5))
+                        
+                    elif kpi_choisi == "Résilience aux Chocs de Queue (TVaR 95%)":
+                        return float(min(100.0, (prime_mod / tvar_95_macro) * 100))
+                        
+                    elif kpi_choisi == "Efficacité du Capital Économique (RoRC)":
+                        capital_requis = max(1000.0, p99_macro - (prime_mod - mu_perte))
+                        rorc = (prime_mod - mu_perte) / capital_requis
+                        return float(max(0.0, rorc * 100))
+                        
+                    elif kpi_choisi == "Indice de Prudence (Marge de Sécurité)":
+                        return float((prime_mod - mu_perte) / mu_perte * 100)
+                        
+                    return 0.0
+
+                scores_kpi_purs = {
+                    "Parametriks (En Mutation)": evaluer_modele_kpi_pur(prime_parametriks_interim, ruine_param),
+                    "XGBoost Monotone (ML)": evaluer_modele_kpi_pur(prime_moy_xgboost, ruine_xgb),
+                    "GLM Tweedie (Standard)": evaluer_modele_kpi_pur(prime_moy_tweedie, ruine_tweedie),
+                    "Découplé Fréquence/Sévérité": evaluer_modele_kpi_pur(prime_moy_freq_sev, ruine_freq_sev)
+                }
+
+                champion_kpi_local = max(scores_kpi_purs, key=scores_kpi_purs.get)               
+                unite_kpi = "pts" if "Sharpe" in kpi_choisi else "%"
+
+                df_palier_models = pd.DataFrame({
+                    "Architecture Modèle": list(scores_kpi_purs.keys()),
+                    "Tarif Proposé (€)": [f"{prime_parametriks_interim:,.2f} €", f"{prime_moy_xgboost:,.2f} €", f"{prime_moy_tweedie:,.2f} €", f"{prime_moy_freq_sev:,.2f} €"],
+                    "Probabilité de Ruine": [f"{ruine_param*100:.2f} %", f"{ruine_xgb*100:.2f} %", f"{ruine_tweedie*100:.2f} %", f"{ruine_freq_sev*100:.2f} %"],
+                    f"Score {kpi_choisi}": [f"{v:,.2f} {unite_kpi}" for v in scores_kpi_purs.values()],
+                    "Verdict Arbitrage": ["🏆 Optimal" if k == champion_kpi_local else "❌ Rejeté" for k in scores_kpi_purs.keys()]
+                })
+                
+                st.dataframe(df_palier_models, hide_index=True, use_container_width=True)
+                
+                fig_palier_pricing = go.Figure()
+                fig_palier_pricing.add_trace(go.Bar(
+                    x=["Parametriks", "XGBoost", "GLM Tweedie", "Freq/Sev"], 
+                    y=[prime_parametriks_interim, prime_moy_xgboost, prime_moy_tweedie, prime_moy_freq_sev],
+                    name="Niveau de Prime Émise",
+                    marker_color=['#2563EB' if k == "Parametriks (En Mutation)" else '#475569' for k in scores_kpi_purs.keys()]
+                ))
+                fig_palier_pricing.add_trace(go.Scatter(x=["Parametriks", "XGBoost", "GLM Tweedie", "Freq/Sev"], y=[p95_macro]*4, mode='lines', name='Choc P95 (Décennal)', line=dict(color='#F59E0B', dash='dash')))
+                fig_palier_pricing.add_trace(go.Scatter(x=["Parametriks", "XGBoost", "GLM Tweedie", "Freq/Sev"], y=[p99_macro]*4, mode='lines', name='Choc P99 (Solvabilité II)', line=dict(color='#EF4444', width=2)))
+                
+                fig_palier_pricing.update_layout(
+                    title=f"Positionnement des Tarifs vs Seuils de Ruine à la Génération {palier if palier > 0 else 1}",
+                    yaxis_title="Montants (€)", height=280, margin=dict(l=20, r=20, t=40, b=20)
+                )
+                st.plotly_chart(fig_palier_pricing, use_container_width=True)
 else:
     # page vide
     st.info("💡 Sélectionnez vos paramètres dans le panneau de gauche et cliquez sur **Lancer le Benchmark Global** pour déployer l'analyse unifiée.")

@@ -32,7 +32,7 @@ class ParametriksPricingAgent:
         et le prix du marché, puis quantifie l'opportunité face aux contraintes de solvabilité.
         """
         print(f"\n[Analyse Agent] Nouveau contrat soumis. Prime Marché: {market_premium} €")
-        
+        print(contract_text)
         bert_outputs = self._mock_multitask_inference(contract_text)
         
         pred_appetite = bert_outputs["appetite"]
