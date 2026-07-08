@@ -1,7 +1,7 @@
 import numpy as np
 import random
 from decimal import Decimal
-# Import direct des classes de votre dépôt
+
 from backend import ParametriksPricingAgent, ScenarioSimulationService
 
 class EvolutionaryPricingOptimizer:
@@ -20,7 +20,7 @@ class EvolutionaryPricingOptimizer:
         self.historical_lr_input = historical_lr
         self.exposure_input = exposure_count
 
-    def _generate_random_simulation_genes(self):
+    def generate_random_genes(self):
         """ 
         Generates a chromosome representing adjustable simulation/pricing dimensions.
         Adjust these keys based on what your ScenarioSimulationService exposes 
@@ -32,7 +32,7 @@ class EvolutionaryPricingOptimizer:
             "macro_stress_factor": random.uniform(1.0, 1.40)   # Macro degradation multiplier
         }
 
-    def _simulate_market_elasticity(self, agent_premium, market_premium):
+    def exponential_elasticity(self, agent_premium, market_premium):
         """ Models market elasticity to benchmark commercial conversion against the market """
         premium_ratio = float(agent_premium) / float(market_premium)
         if premium_ratio <= 1.0:
@@ -40,7 +40,7 @@ class EvolutionaryPricingOptimizer:
         else:
             return float(1.0 / (1.0 + np.exp(5 * (premium_ratio - 1.30))))
 
-    def _evaluate_fitness(self, chromosome, kpi_name):
+    def evaluate_fitness(self, chromosome, kpi_name):
         """ Fitness Function: Plugs genes into the native Parametriks workflow """
         
         parametriks_agent = ParametriksPricingAgent(self.simulation_service)
@@ -81,18 +81,18 @@ class EvolutionaryPricingOptimizer:
         else:
             technical_score = float((adjusted_unitary_premium - mean_loss) / mean_loss * 100)
 
-        conversion_rate = self._simulate_market_elasticity(adjusted_unitary_premium, self.market_premium_input)
+        conversion_rate = self.exponential_elasticity(adjusted_unitary_premium, self.market_premium_input)
 
         return max(0.0, technical_score * conversion_rate)
 
-    def _crossover(self, parent1, parent2):
+    def crossover_genes(self, parent1, parent2):
         alpha = random.random()
         child = {}
         for gene in parent1.keys():
             child[gene] = alpha * parent1[gene] + (1 - alpha) * parent2[gene]
         return child
 
-    def _mutate(self, chromosome):
+    def mutate_genes(self, chromosome):
         for gene in chromosome.keys():
             if random.random() < self.mutation_rate:
                 chromosome[gene] *= random.uniform(0.90, 1.10)
@@ -101,13 +101,13 @@ class EvolutionaryPricingOptimizer:
         return chromosome
 
     def optimize(self, kpi_director):
-        population = [self._generate_random_simulation_genes() for _ in range(self.population_size)]
+        population = [self.generate_random_genes() for _ in range(self.population_size)]
         history_best_scores = []
 
         for generation in range(self.n_generations):
             evaluated_population = []
             for genes in population:
-                score = self._evaluate_fitness(
+                score = self.evaluate_fitness(
                     genes, kpi_director
                 )
                 evaluated_population.append((genes, score))
@@ -120,8 +120,8 @@ class EvolutionaryPricingOptimizer:
             next_generation = list(elites)
             while len(next_generation) < self.population_size:
                 parent1, parent2 = random.sample(elites, 2)
-                child = self._crossover(parent1, parent2)
-                child = self._mutate(child)
+                child = self.crossover_genes(parent1, parent2)
+                child = self.mutate_genes(child)
                 next_generation.append(child)
                 
             population = next_generation
